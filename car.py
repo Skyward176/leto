@@ -37,39 +37,29 @@ class Car:
             6700: 180
         }
         #dynamic data
-        self.ecu = ECU()
+        self.ecu = ECU(self.max_rpm)
         self.speed = 0.0
 
-    def get_speed(self):
+    def get_speed(self): # gets the current speed
         return self.speed
 
-    def set_speed(self, dt):
-        wheel_force = self.ecu.throttle_position*self.calc_wheel_force() - self.calc_rolling_resistance() - self.calc_drag()
-        acceleration = wheel_force / self.weight
-        self.speed = self.speed + acceleration * dt
+    def set_speed(self, dt): # calculetes the new speed based on the current acceleration
+        wheel_force = self.ecu.throttle_position*self.calc_wheel_force() - self.calc_rolling_resistance() - self.calc_drag() # calculate the force at the wheels, minus rolling resistance and drag
+        acceleration = wheel_force / self.weight # get acceleration from force and weight
+        self.speed = self.speed + acceleration * dt # update speed based on acceleration and time step
         # Convert speed (m/s) to engine RPM
-        tire_circumference = math.pi * (self.tire_diameter * 0.0254)
-        wheel_rpm = (self.speed / tire_circumference) * 60 if tire_circumference > 0 else 0
+        tire_circumference = math.pi * (self.tire_diameter * 0.0254) # Convert tire diameter from inches to meters
+        wheel_rpm = (self.speed / tire_circumference) * 60 if tire_circumference > 0 else 0 # Calculate wheel RPM (m/s to RPM)
 
         # 2. Calculate engine RPM: wheel RPM * gear ratio * final drive ratio
-        gear = self.ecu.current_gear
-        gear_ratio = self.gear_ratios[gear-1]
-        final_drive = self.final_drive_ratio
-        self.ecu.rpm = wheel_rpm * gear_ratio * final_drive
+        gear = self.ecu.tcu.current_gear # Get current gear from ECU
+        gear_ratio = self.gear_ratios[gear-1] # Get gear ratio for the current gear
+        final_drive = self.final_drive_ratio # Get final drive ratio
+        self.ecu.rpm = wheel_rpm * gear_ratio * final_drive # Convert wheel RPM to engine RPM
 
-        if self.ecu.rpm < 700:
+        if self.ecu.rpm < 700: # stop engine from stalling (because there is no neutral right now)
             self.ecu.rpm = 700
-
-        self.ecu.current_gear = self.shift_gear()
-
-    def shift_gear(self):
-        for (throttle_range, speed_range), gear in self.ecu.transmission_map.items():
-            t_min, t_max = throttle_range
-            s_min, s_max = speed_range
-            if t_min <= self.ecu.throttle_position * 100 < t_max and s_min <= (self.speed * 3.6 ) < s_max:
-                return gear
-        return 0
-        
+        self.ecu.shift_gear(self.speed, dt) 
     def calc_torque(self, rpm):
         rpms = sorted(self.torque_curve.keys())
         if rpm <= rpms[0]:
@@ -98,7 +88,7 @@ class Car:
         rpm = self.ecu.rpm
         engine_torque = self.calc_torque(rpm)
 
-        gear = self.ecu.current_gear
+        gear = self.ecu.tcu.current_gear
         gear_ratio = self.gear_ratios[gear - 1]
         final_drive = self.final_drive_ratio
         wheel_torque = engine_torque * gear_ratio * final_drive

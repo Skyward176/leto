@@ -45,11 +45,35 @@ while running:
     # --- Controls (Throttle/Brake) ---
     keys = pygame.key.get_pressed()
     # increase or decrease throttle request
+    # --- Throttle Control: Keyboard ---
     if keys[pygame.K_RIGHT]:
         throttle_command += throttle_step * dt
     if keys[pygame.K_LEFT]:
         throttle_command -= throttle_step * dt
     throttle_command = max(0.0, min(1.0, throttle_command))
+
+    # --- Throttle Control: Mouse Slider ---
+    slider_rect = pygame.Rect(100, HEIGHT - 40, 600, 20)
+    slider_handle_width = 20
+    slider_handle_x = slider_rect.x + int(throttle_command * (slider_rect.width - slider_handle_width))
+
+    mouse_pressed = pygame.mouse.get_pressed()
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+    if mouse_pressed[0]:
+        if slider_rect.collidepoint(mouse_x, mouse_y):
+            # Update throttle_command based on mouse position
+            rel_x = mouse_x - slider_rect.x
+            throttle_command = rel_x / (slider_rect.width - slider_handle_width)
+            throttle_command = max(0.0, min(1.0, throttle_command))
+
+    # Draw slider background
+    pygame.draw.rect(screen, (180, 180, 180), slider_rect)
+    # Draw slider handle
+    handle_rect = pygame.Rect(slider_handle_x, slider_rect.y - 5, slider_handle_width, slider_rect.height + 10)
+    pygame.draw.rect(screen, (100, 100, 255), handle_rect)
+    # Draw slider label
+    slider_label = font.render("Throttle", True, (0, 0, 0))
+    screen.blit(slider_label, (slider_rect.x, slider_rect.y - 25))
     # forces simulation
     car.apply_throttle(throttle_command, dt) 
     car.set_speed(dt) # apply acceleration for this time step
@@ -81,7 +105,7 @@ while running:
     throttle_text = font.render(f"Throttle: {throttle_command:.2f}", True, (0, 0, 0))
     torque_text = font.render(f"Torque: {car.calc_torque(car.ecu.rpm):.2f} Nm", True, (0, 0, 0))
     rpm_text = font.render(f"RPM: {car.ecu.rpm:.0f}", True, (0, 0, 0))
-    gear_text = font.render(f"Gear: {car.ecu.current_gear}", True, (0, 0, 0))
+    gear_text = font.render(f"Gear: {car.ecu.tcu.current_gear}", True, (0, 0, 0))
 
     screen.blit(speed_text, (10, 10))
     screen.blit(throttle_text, (10, 35))
