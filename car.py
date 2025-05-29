@@ -38,12 +38,12 @@ class Car:
         }
         #dynamic data
         self.ecu = ECU(self.max_rpm)
-        self.speed = 0.0
+        self.speed:float = 0.0
 
-    def get_speed(self): # gets the current speed
+    def get_speed(self) -> float: # gets the current speed
         return self.speed
 
-    def set_speed(self, dt): # calculetes the new speed based on the current acceleration
+    def set_speed(self, dt: float): # calculetes the new speed based on the current acceleration
         wheel_force = self.ecu.throttle_position*self.calc_wheel_force() - self.calc_rolling_resistance() - self.calc_drag() # calculate the force at the wheels, minus rolling resistance and drag
         acceleration = wheel_force / self.weight # get acceleration from force and weight
         self.speed = self.speed + acceleration * dt # update speed based on acceleration and time step
@@ -55,13 +55,14 @@ class Car:
         gear = self.ecu.tcu.current_gear # Get current gear from ECU
         gear_ratio = self.gear_ratios[gear-1] # Get gear ratio for the current gear
         final_drive = self.final_drive_ratio # Get final drive ratio
-        self.ecu.rpm = wheel_rpm * gear_ratio * final_drive # Convert wheel RPM to engine RPM
+        self.ecu.rpm = int(wheel_rpm * gear_ratio * final_drive) # Convert wheel RPM to engine RPM
 
         if self.ecu.rpm < 700: # stop engine from stalling (because there is no neutral right now)
             self.ecu.rpm = 700
         self.ecu.shift_gear(self.speed, dt) 
-    def calc_torque(self, rpm):
+    def calc_torque(self, rpm:int) -> float:
         rpms = sorted(self.torque_curve.keys())
+        torque = 0.0
         if rpm <= rpms[0]:
             rpm_low = 0
             rpm_high = rpms[0]
@@ -84,7 +85,7 @@ class Car:
         return torque
 
 
-    def calc_wheel_force(self):
+    def calc_wheel_force(self) -> float:
         rpm = self.ecu.rpm
         engine_torque = self.calc_torque(rpm)
 
@@ -120,7 +121,7 @@ class Car:
 
 
 
-    def apply_throttle(self, throttle, dt=0.1):
+    def apply_throttle(self, throttle:float, dt:float = 0.1):
         # Apply throttle to the car
         self.ecu.throttle_command = throttle # there is a lag here, but we're not simulating it right now
         self.ecu.throttle_position = throttle

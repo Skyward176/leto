@@ -9,7 +9,7 @@
 # There is currently a lot more being initialized as defuault here that should actually be passed by the class that creates the ECU, but this will do for now.
 import time
 class TCU:
-    def __init__(self, transmission_map):
+    def __init__(self, transmission_map:dict[tuple[tuple[int,int], tuple[int,int]], int]):
         self.transmission_map = transmission_map
         self.current_gear = 1
         # Kick-down when throttle ≥ 80% or throttle rate ≥ 0.5/s
@@ -22,7 +22,7 @@ class TCU:
         # and don’t downshift until this many kph *below* it
         self.hysteresis_kph = 2.0
 
-    def select_gear_from_map(self, throttle_pct, speed_kph):
+    def select_gear_from_map(self, throttle_pct:float, speed_kph:float):
         """Basic lookup in your 2D map."""
         t = throttle_pct * 100  # convert 0–1 → 0–100
         for (t_range, s_range), gear in self.transmission_map.items():
@@ -32,43 +32,50 @@ class TCU:
                 return gear
         return self.current_gear
 
-    def update(self, throttle_pct, throttle_rate, speed_kph, engine_load_pct):
+    def update(self, throttle_pct:float, throttle_rate:float, speed_kph:float, engine_load_pct:float):
         now = time.time()
         # 1) Base gear from map
         map_gear = self.select_gear_from_map(throttle_pct, speed_kph)
         target = map_gear
         reason = "Map"
 
-        # 2) Throttle-aware kick-down
+        # 2) Throttle-aware kick-down (only if map_gear is not already requesting a downshift)
+        # Prevent repeated kickdowns after a shift by only allowing kickdown if the current gear matches the map gear
+        # Also, only allow kickdown if enough time has passed since the last shift
+        kickdown_allowed = (
+            self.current_gear == map_gear and
+            self.current_gear > 1 and
+            (now - self.last_shift_time) >= self.min_shift_interval
+        )
         if (throttle_pct * 100 >= self.kickdown_throttle or 
             abs(throttle_rate) >= self.kickdown_rate):
-            if self.current_gear > 1:
+            if kickdown_allowed:
                 target = self.current_gear - 1
                 reason = "Kick-down"
+        else:
+            # 3) Upshift with hysteresis
+            if map_gear > self.current_gear:
+                # find the lower bound speed for the next gear
+                s_min = None
+                for (tr, sr), g in self.transmission_map.items():
+                    if g == map_gear and tr[0] <= throttle_pct*100 < tr[1]:
+                        s_min, _ = sr
+                        break
+                if s_min is not None and speed_kph >= s_min + self.hysteresis_kph:
+                    target = map_gear
+                    reason = "Upshift"
 
-        # 3) Upshift with hysteresis
-        elif map_gear > self.current_gear:
-            # find the lower bound speed for the next gear
-            # assume speed_range = (s_min, s_max) for map_gear
-            for (tr, sr), g in self.transmission_map.items():
-                if g == map_gear and tr[0] <= throttle_pct*100 < tr[1]:
-                    s_min, _ = sr
-                    break
-            if speed_kph >= s_min + self.hysteresis_kph:
-                target = map_gear
-                reason = "Upshift"
-
-        # 4) Downshift with hysteresis
-        elif map_gear < self.current_gear:
-            # find the upper bound speed for the lower gear
-            lower_gear = map_gear
-            for (tr, sr), g in self.transmission_map.items():
-                if g == lower_gear and tr[0] <= throttle_pct*100 < tr[1]:
-                    _, s_max = sr
-                    break
-            if speed_kph <= s_max - self.hysteresis_kph:
-                target = map_gear
-                reason = "Downshift"
+            # 4) Downshift with hysteresis
+            elif map_gear < self.current_gear:
+                lower_gear = map_gear
+                s_max = None
+                for (tr, sr), g in self.transmission_map.items():
+                    if g == lower_gear and tr[0] <= throttle_pct*100 < tr[1]:
+                        _, s_max = sr
+                        break
+                if s_max is not None and speed_kph <= s_max - self.hysteresis_kph:
+                    target = map_gear
+                    reason = "Downshift"
 
         # 5) Enforce minimum shift interval
         if target != self.current_gear and (now - self.last_shift_time) >= self.min_shift_interval:
@@ -152,7 +159,7 @@ class ECU:
         # Sensors
         self.prev_throttle_position = 0.0
         self.throttle_position = 0.0 # The current possition of the throttle( not necessarily the same as command due to lag, and possibly idle, etc)
-        self.rpm = 700
+        self.rpm:int = 700
         self.vehicle_speed = 0.0 # Speed of the vehicle from speed sensors        
         self.maf_airflow = 0.0 # MAF sensor reading (used in fuel consumption calculations)
         self.fuel_pressure = 0.0 # fuel pressure at the fuel rail
@@ -180,7 +187,7 @@ class ECU:
 
     def _calc_load(self):
         return (self.throttle_position * self.rpm) / (self.max_rpm)
-    def update_sensors(self, **kwargs):
+    def update_sensors(self, **kwargs: dict[str, object]):
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
